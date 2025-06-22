@@ -31,6 +31,7 @@
 ;;; Code:
 
 (require 'ai-utils)
+(require 'ai-mode-adapter-api) ; Added require statement
 (require 'url)
 
 
@@ -125,7 +126,9 @@ EXTRA-PARAMS is a list of properties (plist) used to store additional parameters
     (user-input . "user")
     (assistant-response . "assistant")
     (action-context . "system")
-    (file-context . "system"))
+    (file-context . "system")
+    (project-context . "system")
+    (file-metadata . "system"))
   "Structure type to role mapping for OpenAI API.
 Supports both string keys and keyword symbols as types that map
 to the three valid OpenAI role values: 'system', 'assistant', and 'user'."
@@ -135,15 +138,14 @@ to the three valid OpenAI role values: 'system', 'assistant', and 'user'."
 
 
 (defun ai-mode-openai--get-role-for-struct-type (struct-type)
-  "Return the role for the given STRUCT-TYPE using customizable role mapping.
-If no role is found, return the original key as the role."
+  "Return the role for the given STRUCT-TYPE using customizable role mapping."
   (let* ((role-mapping ai-mode-openai--struct-type-role-mapping)
          (type (if (symbolp struct-type) (symbol-name struct-type) struct-type))
-         (role (or (if (symbolp struct-type)
-                       (cdr (cl-assoc struct-type role-mapping))
-                     (cdr (cl-assoc type role-mapping :test #'equal)))
-                   type)))
-    role))
+         (struct-type-string (if (symbolp struct-type) (symbol-name struct-type) struct-type))
+         (role (if (symbolp struct-type)
+                   (cdr (cl-assoc struct-type role-mapping))
+                 (cdr (cl-assoc type role-mapping :test #'equal)))))
+    (or role struct-type-string)))
 
 
 (defun ai-mode-openai--convert-struct (item role-mapping)
@@ -158,9 +160,9 @@ Supports both alist and plist structures for ITEM."
       `(("role" . ,model-role)
         ("content" . ,content))))
    ((plistp item)
-    (let* ((type (plist-get item :type))
+    (let* ((type (ai-mode-adapter--get-struct-type item))
            (model-role (ai-mode-openai--get-role-for-struct-type type))
-           (content (plist-get item :content)))
+           (content (ai-mode-adapter--get-struct-content item)))
       `(("role" . ,model-role)
         ("content" . ,content))))))
 
