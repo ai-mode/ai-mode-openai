@@ -111,7 +111,7 @@ EXTRA-PARAMS is a list of properties (plist) used to store additional parameters
          (encoded-request-data (encode-coding-string (json-encode request-data) 'utf-8))
          (headers  `(("Content-Type" . "application/json")
                      ("Authorization" . ,(format "Bearer %s" ai-mode-openai--api-key)))))
-    (ai-utils--async-request api-url "POST" encoded-request-data headers callback :timeout timeout)))
+    (ai-mode-adapter-api-async-request api-url "POST" encoded-request-data headers callback :timeout timeout)))
 
 
 (defcustom ai-mode-openai--struct-type-role-mapping
@@ -128,7 +128,9 @@ EXTRA-PARAMS is a list of properties (plist) used to store additional parameters
     (action-context . "system")
     (file-context . "system")
     (project-context . "system")
-    (file-metadata . "system"))
+    (file-metadata . "system")
+    (project-ai-summary . "system")
+    (memory . "system"))
   "Structure type to role mapping for OpenAI API.
 Supports both string keys and keyword symbols as types that map
 to the three valid OpenAI role values: 'system', 'assistant', and 'user'."
@@ -149,30 +151,21 @@ to the three valid OpenAI role values: 'system', 'assistant', and 'user'."
 
 
 (defun ai-mode-openai--convert-struct (item role-mapping)
-  "Convert a single ITEM into a message format using ROLE-MAPPING.
-Supports both alist and plist structures for ITEM."
-  (cond
-   ((and (listp item) (consp (car item)) (stringp (caar item)))
-    (let* ((role (cdr (assoc "role" item)))
-           (model-role (or (cdr (assoc role role-mapping))
-                           (ai-mode-openai--get-role-for-struct-type role)))
-           (content (cdr (assoc "content" item))))
-      `(("role" . ,model-role)
-        ("content" . ,content))))
-   ((plistp item)
-    (let* ((type (ai-mode-adapter--get-struct-type item))
-           (model-role (ai-mode-openai--get-role-for-struct-type type))
-           (content (ai-mode-adapter--get-struct-content item)))
-      `(("role" . ,model-role)
-        ("content" . ,content))))))
+  "Convert a single ITEM plist structure into a message format using ROLE-MAPPING."
+  (let* ((type (ai-mode-adapter-api-get-struct-type item))
+         (model-role (ai-mode-openai--get-role-for-struct-type type))
+         (content (ai-mode-adapter-api-get-struct-content item)))
+    `(("role" . ,model-role)
+      ("content" . ,content))))
 
 
 (defun ai-mode-openai--structs-to-model-messages (messages model)
   "Convert common CONTEXT structure into OpenAI Chat API messages."
-  (let* ((role-mapping (map-elt model :role-mapping)))
+  (let* ((prepared-messages (ai-mode-adapter-api-prepare-messages messages))
+         (role-mapping (map-elt model :role-mapping)))
     (mapcar (lambda (item)
               (ai-mode-openai--convert-struct item role-mapping))
-            messages)))
+            prepared-messages)))
 
 
 (defun ai-mode-openai--make-types-struct (message)
@@ -188,8 +181,25 @@ Supports both alist and plist structures for ITEM."
   (mapcar #'ai-mode-openai--make-types-struct messages))
 
 
-(cl-defun ai-mode-openai--convert-context-to-request-data (context model &key (extra-params nil))
-  "Convert CONTEXT associative array to request data format."
+(defun ai-mode-openai--convert-usage-metadata-to-plist (usage-metadata)
+  "Convert USAGE-METADATA from OpenAI API response to a plist.
+Maps OpenAI API field names to standardized keys:
+- prompt_tokens -> :input-tokens
+- completion_tokens -> :output-tokens
+- total_tokens -> :total-tokens"
+  (let ((input-tokens (cdr (assoc 'prompt_tokens usage-metadata)))
+        (output-tokens (cdr (assoc 'completion_tokens usage-metadata)))
+        (total-tokens (cdr (assoc 'total_tokens usage-metadata))))
+    (list :input-tokens input-tokens
+          :output-tokens output-tokens
+          :total-tokens total-tokens)))
+
+
+(cl-defun ai-mode-openai--convert-context-to-request-data (context model &key (extra-params nil) enable-caching)
+  "Convert CONTEXT associative array to request data format.
+
+When ENABLE-CACHING is non-nil, it is ignored as OpenAI API
+does not support prompt caching. This parameter is provided for API compatibility."
   (let* ((version (map-elt model :version))
          (temperature (map-elt model :temperature))
          (max-tokens (map-elt model :max-tokens ai-mode-openai--default-max-tokens))
@@ -215,12 +225,21 @@ Supports both alist and plist structures for ITEM."
     (ai-common--make-typed-struct message 'error :additional-props additional-props)))
 
 
-(cl-defun ai-mode-openai--async-send-context (context model &key success-callback (fail-callback nil) (extra-params nil))
+(cl-defun ai-mode-openai--async-send-context (context model &key success-callback (fail-callback nil) update-usage-callback enable-caching (extra-params nil))
   "Asynchronously execute CONTEXT, extract message from response and call CALLBACK.
 
 If the request fails, call FAIL-CALLBACK, if it is defined.
-EXTRA-PARAMS is a list of properties (plist) to store additional parameters."
-  (let* ((request-data (ai-mode-openai--convert-context-to-request-data context model :extra-params extra-params)))
+EXTRA-PARAMS is a list of properties (plist) to store additional parameters.
+
+When ENABLE-CACHING is non-nil, it is ignored as OpenAI API
+does not support prompt caching. This parameter is provided for API compatibility.
+
+When UPDATE-USAGE-CALLBACK is provided, it will be called with usage statistics
+converted from the response's usage field."
+  (let* ((request-data (ai-mode-openai--convert-context-to-request-data
+                        context model
+                        :extra-params extra-params
+                        :enable-caching enable-caching)))
     (ai-mode-openai--async-api-request
      request-data
      (lambda (response)
@@ -229,7 +248,11 @@ EXTRA-PARAMS is a list of properties (plist) to store additional parameters."
              (funcall fail-callback request-data (ai-mode-openai--json-error-to-typed-struct response)))
          (let* ((response-content (ai-mode-openai--extract-response-or-error response))
                 (choices (ai-mode-openai--get-response-choices response-content))
-                (messages (ai-mode-openai--convert-items-to-context-structs choices)))
+                (messages (ai-mode-openai--convert-items-to-context-structs choices))
+                (usage-metadata (cdr (assoc 'usage response))))
+           (when (and update-usage-callback usage-metadata)
+             (let ((usage-stats (ai-mode-openai--convert-usage-metadata-to-plist usage-metadata)))
+               (funcall update-usage-callback usage-stats)))
            (funcall success-callback messages))))
      :fail-callback fail-callback
      :extra-params extra-params)))
