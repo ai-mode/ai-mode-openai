@@ -19,14 +19,15 @@
 
 ## Overview
 
-The OpenAI backend for `ai-mode` provides seamless integration with OpenAI's language models through their API. It serves as a bridge between `ai-mode`'s powerful AI features and OpenAI's cutting-edge models, enabling you to leverage GPT-4o, o1, and other variants within your Emacs environment.
+The OpenAI backend for `ai-mode` provides seamless integration with OpenAI's language models through their API. It serves as a bridge between `ai-mode`'s powerful AI features and OpenAI's cutting-edge models, enabling you to leverage GPT-4o, o1, o3, and other variants within your Emacs environment.
 
 ## Key Features
-- **Multiple model support**: Access various OpenAI models including GPT-4o, o1, and their variants through a unified interface
+- **Multiple model support**: Access various OpenAI models including GPT-4o, o1, o3, GPT-4.1 series, and their variants through a unified interface
 - **Flexible configuration**: Customize temperature, max tokens, and other parameters per model to fine-tune AI responses
 - **Native API integration**: Direct communication with OpenAI's API using proper authentication and request handling
 - **Asynchronous operation**: Non-blocking API calls ensure smooth editor performance during AI interactions
 - **Model management**: Easy model selection and switching between different OpenAI offerings
+- **Usage tracking**: Automatic monitoring of token usage with callbacks for cost optimization
 
 This backend plugin enables `ai-mode` to harness the power of OpenAI's language models, providing the necessary infrastructure for API communication, authentication, and response processing within the broader `ai-mode` ecosystem.
 
@@ -78,9 +79,12 @@ Once configured, the OpenAI backend integrates seamlessly with `ai-mode`, enabli
 
 The backend provides multiple OpenAI models with different configurations:
 - **GPT-4o**: Standard and temperature variants (0.1, 1.0)
-- **GPT-4o-mini**: Faster, cost-effective option
+- **GPT-4o-mini**: Faster, cost-effective option with standard and temperature variants
+- **ChatGPT-4o-latest**: Latest ChatGPT model
 - **o1 series**: Advanced reasoning models (o1, o1-preview, o1-mini)
-- **Experimental models**: o3, o4-mini, GPT-4.1 series
+- **o3 series**: Next-generation models (o3, o3-mini)
+- **GPT-4.1 series**: Enhanced models (GPT-4.1, GPT-4.1-mini, GPT-4.1-nano)
+- **Experimental models**: o4-mini, GPT-4.5-preview
 
 You can switch between models using `ai-mode`'s model selection interface, with each model optimized for different use cases.
 
@@ -102,6 +106,7 @@ Customize model behavior per use case:
 (setq ai-mode-openai--model-temperature 0.2)  ; Lower temperature for more focused responses
 (setq ai-mode-openai--default-max-tokens 2000)  ; Increase token limit
 (setq ai-mode-openai-request-timeout 120)  ; Extend timeout for complex requests
+(setq ai-mode-openai--completion-choices 1)  ; Number of completions to generate
 ```
 
 The backend handles all API communication, authentication, and response processing automatically, allowing you to focus on your work while benefiting from OpenAI's powerful language models.
@@ -116,17 +121,17 @@ To add a custom model, modify your Emacs configuration file (e.g., `.emacs` or `
 (add-to-list 'ai-mode--models-providers
              (lambda ()
                (list (ai-mode-openai--make-model "gpt-4o-custom"
-                                                       :name "My Custom GPT-4o"
-                                                       :temperature 0.5
-                                                       :max-tokens 8192))))
+                                                 :name "My Custom GPT-4o"
+                                                 :temperature 0.5
+                                                 :max-tokens 8192))))
 
 ;; If you use ai-chat, also add it to ai-chat--models-providers
 (add-to-list 'ai-chat--models-providers
              (lambda ()
                (list (ai-mode-openai--make-model "gpt-4o-custom"
-                                                       :name "My Custom GPT-4o"
-                                                       :temperature 0.5
-                                                       :max-tokens 8192))))
+                                                 :name "My Custom GPT-4o"
+                                                 :temperature 0.5
+                                                 :max-tokens 8192))))
 ```
 
 In this example:
@@ -146,7 +151,6 @@ Remember to restart Emacs or re-evaluate your configuration after making changes
 - **[AI Mode DeepSeek](https://github.com/ai-mode/ai-mode-deepseek)**: DeepSeek backend for ai-mode
 - **[AI Mode Hugging Face](https://github.com/ai-mode/ai-mode-hf)**: Hugging Face models backend for ai-mode
 - **[AI Mode Google Generative AI](https://github.com/ai-mode/ai-mode-google-genai)**: Google Generative AI backend for `ai-mode`.
-
 
 ### Documentation and Community
 
