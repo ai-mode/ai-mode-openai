@@ -97,12 +97,13 @@
   :group 'ai-openai)
 
 
-(cl-defun ai-mode-openai--async-api-request (request-data callback &key (fail-callback nil) (extra-params nil))
+(cl-defun ai-mode-openai--async-api-request (request-data callback &key (fail-callback nil) (extra-params nil) (request-id nil))
   "Perform an asynchronous execution of REQUEST-DATA to the OpenAI ChatGPT API.
 
 CALLBACK is called in case of a successful request execution.
 If the request fails, then FAIL-CALLBACK is called if it is provided.
-EXTRA-PARAMS is a list of properties (plist) used to store additional parameters."
+EXTRA-PARAMS is a list of properties (plist) used to store additional parameters.
+REQUEST-ID is an optional unique identifier for the request."
   (when (null ai-mode-openai--api-key)
     (error "OpenAI API key is not set"))
 
@@ -110,8 +111,11 @@ EXTRA-PARAMS is a list of properties (plist) used to store additional parameters
          (timeout (map-elt extra-params :timeout ai-mode-openai-request-timeout))
          (encoded-request-data (encode-coding-string (json-encode request-data) 'utf-8))
          (headers  `(("Content-Type" . "application/json")
-                     ("Authorization" . ,(format "Bearer %s" ai-mode-openai--api-key)))))
-    (ai-mode-adapter-api-async-request api-url "POST" encoded-request-data headers callback :timeout timeout)))
+                     ("Authorization" . ,(format "Bearer %s" ai-mode-openai--api-key))))
+         (actual-request-id (or request-id (ai-common--generate-request-id))))
+    (ai-mode-adapter-api-async-request api-url "POST" encoded-request-data headers callback
+                                       :timeout timeout
+                                       :request-id actual-request-id)))
 
 
 (defcustom ai-mode-openai--struct-type-role-mapping
@@ -225,11 +229,12 @@ does not support prompt caching. This parameter is provided for API compatibilit
     (ai-common--make-typed-struct message 'error :additional-props additional-props)))
 
 
-(cl-defun ai-mode-openai--async-send-context (context model &key success-callback (fail-callback nil) update-usage-callback enable-caching (extra-params nil))
+(cl-defun ai-mode-openai--async-send-context (context model &key success-callback (fail-callback nil) update-usage-callback enable-caching (extra-params nil) (request-id nil))
   "Asynchronously execute CONTEXT, extract message from response and call CALLBACK.
 
 If the request fails, call FAIL-CALLBACK, if it is defined.
 EXTRA-PARAMS is a list of properties (plist) to store additional parameters.
+REQUEST-ID is an optional unique identifier for the request.
 
 When ENABLE-CACHING is non-nil, it is ignored as OpenAI API
 does not support prompt caching. This parameter is provided for API compatibility.
@@ -239,7 +244,8 @@ converted from the response's usage field."
   (let* ((request-data (ai-mode-openai--convert-context-to-request-data
                         context model
                         :extra-params extra-params
-                        :enable-caching enable-caching)))
+                        :enable-caching enable-caching))
+         (actual-request-id (or request-id (ai-common--generate-request-id))))
     (ai-mode-openai--async-api-request
      request-data
      (lambda (response)
@@ -255,7 +261,8 @@ converted from the response's usage field."
                (funcall update-usage-callback usage-stats)))
            (funcall success-callback messages))))
      :fail-callback fail-callback
-     :extra-params extra-params)))
+     :extra-params extra-params
+     :request-id actual-request-id)))
 
 
 (defun ai-mode-openai--setup-assistant-backend ()
