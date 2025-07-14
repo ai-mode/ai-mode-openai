@@ -228,7 +228,6 @@ does not support prompt caching. This parameter is provided for API compatibilit
                                  :code (cdr (assoc 'code error)))))
     (ai-common--make-typed-struct message 'error :additional-props additional-props)))
 
-
 (cl-defun ai-mode-openai--async-send-context (context model &key success-callback (fail-callback nil) update-usage-callback enable-caching (extra-params nil) (request-id nil))
   "Asynchronously execute CONTEXT, extract message from response and call CALLBACK.
 
@@ -255,11 +254,11 @@ converted from the response's usage field."
          (let* ((response-content (ai-mode-openai--extract-response-or-error response))
                 (choices (ai-mode-openai--get-response-choices response-content))
                 (messages (ai-mode-openai--convert-items-to-context-structs choices))
-                (usage-metadata (cdr (assoc 'usage response))))
-           (when (and update-usage-callback usage-metadata)
-             (let ((usage-stats (ai-mode-openai--convert-usage-metadata-to-plist usage-metadata)))
-               (funcall update-usage-callback usage-stats)))
-           (funcall success-callback messages))))
+                (usage-metadata (cdr (assoc 'usage response)))
+                (usage-stats (when usage-metadata (ai-mode-openai--convert-usage-metadata-to-plist usage-metadata))))
+           (when (and update-usage-callback usage-stats)
+             (funcall update-usage-callback usage-stats))
+           (funcall success-callback messages usage-stats))))
      :fail-callback fail-callback
      :extra-params extra-params
      :request-id actual-request-id)))
