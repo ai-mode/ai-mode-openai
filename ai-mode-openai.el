@@ -209,7 +209,7 @@ does not support prompt caching. This parameter is provided for API compatibilit
          (max-tokens (map-elt model :max-tokens ai-mode-openai--default-max-tokens))
          (n (map-elt model :n ai-mode-openai--completion-choices))
          (model-rest-params (map-elt model :rest-params))
-         (messages (ai-mode-openai--structs-to-model-messages (map-elt context :messages) model))
+         (messages (ai-mode-openai--structs-to-model-messages (ai-mode-adapter-api-get-execution-context-messages context) model))
          (payload (append
                    `(("model" . ,version)
                      ("messages" . ,messages))
@@ -244,7 +244,7 @@ converted from the response's usage field."
                         context model
                         :extra-params extra-params
                         :enable-caching enable-caching))
-         (actual-request-id (or request-id (ai-common--generate-request-id))))
+         (actual-request-id (or request-id (ai-mode-adapter-api-get-execution-context-request-id context))))
     (ai-mode-openai--async-api-request
      request-data
      (lambda (response)
@@ -297,6 +297,11 @@ converted from the response's usage field."
 (defun ai-mode-openai--get-models ()
   "Retrieve the list of available models."
   (list
+   (ai-mode-openai--make-model "gpt-5")
+   (ai-mode-openai--make-model "gpt-5-mini")
+   (ai-mode-openai--make-model "gpt-5-nano")
+   (ai-mode-openai--make-model "gpt-5-chat-latest")
+
    (ai-mode-openai--make-model "gpt-4o")
    (ai-mode-openai--make-model "gpt-4o" :temperature 0.1)
    (ai-mode-openai--make-model "gpt-4o" :temperature 1)
